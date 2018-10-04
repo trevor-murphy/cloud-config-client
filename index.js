@@ -216,16 +216,15 @@ module.exports = {
      * Retrieve properties from Spring Cloud config service
      *
      * @param {module:CloudConfigClient~Options} options - spring client configuration options
-     * @param {module:CloudConfigClient~loadCallback} [callback] - load callback
      * @returns {Promise<module:Config~Config, Error>|void} promise handler or void if callback was not defined
      *
      * @since 1.0.0
      */
-  load (options, callback) {
+  load (options) {
     if (options.client_id && options.client_secret && options.access_token_uri) {
       getGrant(options).then((grant) => {
         options.token = grant.access_token
-        return loadConfig(options, callback)
+        return loadConfig(options)
       }).catch(e => {
         console.error('Could not authenticate with config server: ', e.message)
       })
