@@ -229,7 +229,7 @@ module.exports = {
         console.error('Could not authenticate with config server: ', e.message)
       })
     } else {
-      return loadConfig(options, callback)
+      return loadConfig(options)
     }
   }
 }
