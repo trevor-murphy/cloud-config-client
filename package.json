@@ -1,6 +1,6 @@
 {
-  "name": "@crdant/cloud-config-client",
-  "version": "0.1.7",
+  "name": "cloud-config-client",
+  "version": "1.4.5",
   "description": "Spring Cloud Config Client for NodeJS with OAuth for Spring Cloud Services on PCF",
   "main": "index.js",
   "scripts": {
@@ -23,9 +23,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/crdant/cloud-config-client.git"
+    "url": "https://github.com/trevor-murphy/cloud-config-client.git"
   },
-  "author": "Chuck D'Antonio <cdantonio@pivotal.io> (https://github.com/crdant)",
+  "author": "Trevor Murphy <trevor.murphy@cengage.com>",
   "license": "MIT",
   "devDependencies": {
     "jsdoc": "^3.5.5",
