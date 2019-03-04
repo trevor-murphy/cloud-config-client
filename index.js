@@ -139,7 +139,7 @@ function fetchAccessToken (clientId, clientSecret, tokenEndpoint, callback) {
  * @param {module:CloudConfigClient~loadCallback} [callback] - (load) callback
  */
 function loadWithCallback (options, callback) {
-  const endpoint = options.endpoint ? URL.parse(options.endpoint) : DEFAULT_URL
+  const endpoint = options.credentials.uri ? URL.parse(options.credentials.uri) : DEFAULT_URL
   const name = options.name || options.application
   const context = options.context
   const client = endpoint.protocol === 'https:' ? https : http
@@ -167,6 +167,7 @@ function loadWithCallback (options, callback) {
         const body = JSON.parse(response)
         callback(null, new Config(body, context))
       } catch (e) {
+        console.log('error in fetchAccessToken')
         callback(e)
       }
     })
@@ -191,15 +192,9 @@ function loadWithPromise (options) {
   })
 }
 
-function loadConfig (options, callback) {
-  return typeof callback === 'function'
-    ? loadWithCallback(options, callback)
-    : loadWithPromise(options)
-}
-
-function getGrant (options) {
+function getGrant (credentials) {
   return new Promise((resolve, reject) => {
-    fetchAccessToken(options.client_id, options.client_secret, options.access_token_uri,
+    fetchAccessToken(credentials.client_id, credentials.client_secret, credentials.access_token_uri,
       (error, grant) => {
         if (error) {
           reject(error)
@@ -221,15 +216,15 @@ module.exports = {
      * @since 1.0.0
      */
   load (options) {
-    if (options.client_id && options.client_secret && options.access_token_uri) {
-      getGrant(options).then((grant) => {
+    if (options.credentials) {
+      return getGrant(options.credentials).then((grant) => {
         options.token = grant.access_token
-        return loadConfig(options)
+        return loadWithPromise(options)
       }).catch(e => {
         console.error('Could not authenticate with config server: ', e.message)
       })
     } else {
-      return loadConfig(options)
+      return loadWithPromise(options)
     }
   }
 }
