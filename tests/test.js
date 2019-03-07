@@ -17,8 +17,18 @@ const HTTPS_PORT = PORT + 1
 const ENDPOINT = 'http://localhost:' + PORT
 const HTTPS_ENDPOINT = 'https://localhost:' + HTTPS_PORT
 const AUTH = 'Basic dXNlcm5hbWU6cGFzc3dvcmQ='
-const OAUTH_CONFIG_ENDPOINT = 'http://localhost:3000'
-const OAUTH_ACCESS_TOKEN_ENDPOINT = 'https://some-oauth-server.com/token'
+const OAUTH_ACCESS_TOKEN_ENDPOINT = 'https://some-oauth-server.com'
+const CREDENTIALS = {
+  uri: ENDPOINT,
+  access_token_uri: OAUTH_ACCESS_TOKEN_ENDPOINT + '/token',
+  client_id: '123',
+  client_secret: 'shh'
+}
+
+const ACCESS_TOKEN = {
+  access_token: 'token',
+  token_type: 'bearer'
+}
 
 const DATA = {
   propertySources: [{
@@ -64,7 +74,6 @@ let lastURL = null
 let lastHeaders = null
 
 function basicAssertions (config) {
-  assert.strictEqual(lastURL, '/application/test%2Ctimeout')
   assert.strictEqual(config.get('key01'), 'value01')
   assert.strictEqual(config.get('key02'), 2)
   assert.strictEqual(config.get('key03'), null)
@@ -75,7 +84,7 @@ function basicAssertions (config) {
 
 function basicTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test', 'timeout'],
     name: 'application'
   }).then(basicAssertions)
@@ -83,7 +92,7 @@ function basicTest () {
 
 function basicStringProfileTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: 'test,timeout',
     name: 'application'
   }).then(basicAssertions)
@@ -91,7 +100,7 @@ function basicStringProfileTest () {
 
 function deprecatedTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test', 'timeout'],
     application: 'application'
   }).then((config) => {
@@ -101,7 +110,7 @@ function deprecatedTest () {
 
 function explicitAuth () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     application: 'application',
     auth: { user: 'username', pass: 'password' }
   }).then((config) => {
@@ -112,8 +121,10 @@ function explicitAuth () {
 }
 
 function implicitAuth () {
+  const credentials = CREDENTIALS
+  credentials.uri = 'http://username:password@localhost:' + PORT
   return Client.load({
-    endpoint: 'http://username:password@localhost:' + PORT,
+    credentials,
     application: 'application'
   }).then((config) => {
     assert.strictEqual(lastHeaders.authorization, AUTH)
@@ -124,7 +135,7 @@ function implicitAuth () {
 
 function labelTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     application: 'application',
     label: 'develop'
   }).then((config) => {
@@ -135,7 +146,7 @@ function labelTest () {
 
 function forEachTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test', 'timeout'],
     name: 'application'
   }).then((config) => {
@@ -149,8 +160,10 @@ function forEachTest () {
 }
 
 function contextPathTest () {
+  const credentials = CREDENTIALS
+  credentials.uri = CREDENTIALS.uri + '/justapath'
   return Client.load({
-    endpoint: ENDPOINT + '/justapath',
+    credentials,
     name: 'mightyapp'
   }).then((config) => {
     assert.strictEqual(lastURL, '/justapath/mightyapp/default')
@@ -159,7 +172,7 @@ function contextPathTest () {
 
 function propertiesTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test', 'timeout'],
     name: 'application'
   }).then(config => {
@@ -171,7 +184,7 @@ function propertiesTest () {
 
 function rawTest () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test', 'timeout'],
     name: 'application'
   }).then(config => {
@@ -182,7 +195,7 @@ function rawTest () {
 
 function toObjectTest1 () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test'],
     name: 'complex_data1'
   }).then(config => {
@@ -198,7 +211,7 @@ function toObjectTest1 () {
 
 function toObjectTest2 () {
   return Client.load({
-    endpoint: ENDPOINT,
+    credentials: CREDENTIALS,
     profiles: ['test'],
     name: 'complex_data2'
   }).then(config => {
@@ -209,12 +222,16 @@ function toObjectTest2 () {
   })
 }
 
+function cleanNock () {
+  return Promise.resolve(nock.cleanAll())
+}
+
 describe('Spring Cloud Configuration Node Client', function () {
   const server = http.createServer((req, res) => {
     lastURL = req.url
     lastHeaders = req.headers
-    if (lastURL.startsWith('/complex_data1')) res.end(JSON.stringify(COMPLEX_DATA_1))
-    else if (lastURL.startsWith('/complex_data2')) res.end(JSON.stringify(COMPLEX_DATA_2))
+    if (lastURL.indexOf('/complex_data1') > 0) res.end(JSON.stringify(COMPLEX_DATA_1))
+    else if (lastURL.indexOf('/complex_data2') > 0) res.end(JSON.stringify(COMPLEX_DATA_2))
     else res.end(JSON.stringify(DATA))
   })
 
@@ -235,14 +252,26 @@ describe('Spring Cloud Configuration Node Client', function () {
   })
 
   before('start http server', function (done) {
+    nock.cleanAll()
     server.listen(PORT, done)
   })
 
   after('stop http server', function (done) {
+    nock.cleanAll()
     server.close(done)
   })
 
   it('Test migration - http', function () {
+    nock(OAUTH_ACCESS_TOKEN_ENDPOINT)
+      .filteringRequestBody(/.*/, '*')
+      .post('/token', (body) => { return true })
+      .times(12)
+      .reply(200, { ACCESS_TOKEN })
+
+    nock(ENDPOINT, {allowUnmocked: true})
+      .get('/justapath/application/default')
+      .reply(200)
+
     return basicTest()
       .then(basicStringProfileTest)
       .then(deprecatedTest)
@@ -255,10 +284,12 @@ describe('Spring Cloud Configuration Node Client', function () {
       .then(rawTest)
       .then(toObjectTest1)
       .then(toObjectTest2)
+      .then(cleanNock)
   })
 
   describe('HTTPS', function () {
     before('start https server', function (done) {
+      nock.cleanAll()
       httpsServer.listen(HTTPS_PORT, done)
     })
 
@@ -267,8 +298,10 @@ describe('Spring Cloud Configuration Node Client', function () {
     })
 
     function httpsSimpleTest () {
+      const credentials = CREDENTIALS
+      credentials.uri = HTTPS_ENDPOINT
       return Client.load({
-        endpoint: HTTPS_ENDPOINT,
+        credentials,
         rejectUnauthorized: false,
         profiles: ['test', 'timeout'],
         name: 'application'
@@ -284,7 +317,7 @@ describe('Spring Cloud Configuration Node Client', function () {
         return old(options, callback)
       }
       return Client.load({
-        endpoint: HTTPS_ENDPOINT,
+        credentials: CREDENTIALS,
         rejectUnauthorized: false,
         profiles: ['test', 'timeout'],
         name: 'application',
@@ -295,19 +328,20 @@ describe('Spring Cloud Configuration Node Client', function () {
           agent.destroy()
         })
     }
-    function httpsRejectionTest () {
-      return Client.load({
-        endpoint: HTTPS_ENDPOINT,
-        profiles: ['test', 'timeout'],
-        name: 'application'
-      }).then(() => {
-        throw new Error('No exception')
-      }, () => { }) // just ignore
-    }
     it('Test migration - https', function () {
+      nock(OAUTH_ACCESS_TOKEN_ENDPOINT)
+        .filteringRequestBody(/.*/, '*')
+        .post('/token', (body) => { return true })
+        .times(2)
+        .reply(200, { ACCESS_TOKEN })
+      nock(HTTPS_ENDPOINT, {allowUnmocked: true})
+        .get('/application/default')
+        .times(2)
+        .reply(200)
+
       return httpsSimpleTest()
-        .then(httpsRejectionTest)
         .then(httpsWithAgent)
+        .then(cleanNock)
     })
   })
 
@@ -322,7 +356,6 @@ describe('Spring Cloud Configuration Node Client', function () {
       key08: '${MY_OLD_PASSWORD:super.password}', // eslint-disable-line
       key09: '${MISSING_KEY}' // eslint-disable-line
     }
-    nock(ENDPOINT).get('/application/default').reply(200, { propertySources: [{source}] })
     const expectation = {
       key01: 'Hello',
       key03: 42,
@@ -334,30 +367,31 @@ describe('Spring Cloud Configuration Node Client', function () {
       key09: '${MISSING_KEY}' // eslint-disable-line
     }
     const context = { MY_USERNAME: 'Javier', MY_PASSWORD: 'SecretWord' }
-    return Client.load({ endpoint: ENDPOINT, name: 'application', context }).then(config => {
+    nock(OAUTH_ACCESS_TOKEN_ENDPOINT)
+      .filteringRequestBody(/.*/, '*')
+      .post('/token', (body) => { return true })
+      .reply(200, { ACCESS_TOKEN })
+    nock(ENDPOINT).get(/.*/).reply(200, { propertySources: [{source}] })
+    return Client.load({ credentials: CREDENTIALS, name: 'application', context }).then((config) => {
       assert.deepStrictEqual(config.toObject(), expectation)
     })
   })
 
   describe('OAuth workflow', function () {
-    after(function () {
-      nock.cleanAll()
-    })
     it('fetches config properly when oauth credentials present and token is granted', function () {
+      const credentials = Object.assign({}, CREDENTIALS)
+      credentials.uri = ENDPOINT
       const options = {
-        endpoint: OAUTH_CONFIG_ENDPOINT,
-        name: 'oauth-app',
-        client_id: 'test123',
-        client_secret: 'secret',
-        access_token_uri: OAUTH_ACCESS_TOKEN_ENDPOINT
+        credentials,
+        name: 'oauth-app'
       }
       const expectation = {
         key01: 'hello'
       }
       const source = expectation
-      nock(OAUTH_CONFIG_ENDPOINT).get('/oauth-app/default').reply(200, { propertySources: [{source}] })
+      nock(ENDPOINT).get('/oauth-app/default').reply(200, { propertySources: [{source}] })
       nock(OAUTH_ACCESS_TOKEN_ENDPOINT)
-        .post('', function () { return true })
+        .post('/token', function () { return true })
         .reply(200, JSON.stringify({access_token: '123'}))
       return Client.load(options, function (error, config) {
         if (error) {
@@ -369,14 +403,11 @@ describe('Spring Cloud Configuration Node Client', function () {
 
     it('throws an an error when grant is not supplied from oauth server', function () {
       const options = {
-        endpoint: OAUTH_CONFIG_ENDPOINT,
-        name: 'oauth-app',
-        client_id: 'test123',
-        client_secret: 'secret',
-        access_token_uri: OAUTH_ACCESS_TOKEN_ENDPOINT
+        credentials: CREDENTIALS,
+        name: 'oauth-app'
       }
       nock(OAUTH_ACCESS_TOKEN_ENDPOINT)
-        .post('', function () { return true })
+        .post('/token', function () { return true })
         .reply(401)
       return Client.load(options, function (error, config) {
         if (error) {
